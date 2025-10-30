@@ -5,6 +5,8 @@ AddCSLuaFile()
 ---@field GetShape fun(self: ent_forcefield): shape: integer
 ---@field SetKey fun(self: ent_forcefield, key: integer)
 ---@field GetKey fun(self: ent_forcefield): key: integer
+---@field SetDecay fun(self: ent_forcefield, decay: integer)
+---@field GetDecay fun(self: ent_forcefield): decay: integer
 ---@field SetSize fun(self: ent_forcefield, size: Vector)
 ---@field GetSize fun(self: ent_forcefield): size: Vector
 ---@field SetForce fun(self: ent_forcefield, force: Vector)
@@ -30,6 +32,7 @@ ENT.Editable = true
 ---@module "forcefield.constants"
 local constants = include("forcefield/constants.lua")
 local forceFieldShape = constants.forceFieldShape
+local forceFieldDecay = constants.forceFieldDecay
 
 function ENT:SetupDataTables()
 	self:NetworkVar("Vector", 0, "Size")
@@ -41,6 +44,7 @@ function ENT:SetupDataTables()
 
 	self:NetworkVar("Int", 0, "Shape")
 	self:NetworkVar("Int", 1, "Key")
+	self:NetworkVar("Int", 2, "Decay")
 
 	self:NetworkVarNotify("Force", function(entity, name, old, new)
 		---@cast entity ent_forcefield
@@ -197,6 +201,28 @@ function ENT:GetEntities()
 	return {}
 end
 
+function ENT:GetDecayFunction()
+	if self:GetDecay() == forceFieldDecay.inverse then
+		return function(x)
+			if x == 0 then
+				return 0
+			end
+			return 1 / x
+		end
+	elseif self:GetDecay() == forceFieldDecay.inverse_square then
+		return function(x)
+			if x == 0 then
+				return 0
+			end
+			return 1 / x ^ 2
+		end
+	end
+
+	return function(x)
+		return 1
+	end
+end
+
 ---@param entity Entity
 function ENT:ApplyForce(entity)
 	local shape = self:GetShape()
@@ -204,6 +230,7 @@ function ENT:ApplyForce(entity)
 	local origin = self:GetPos()
 	local physCount = entity:GetPhysicsObjectCount()
 	local flip = self:GetFlip() and -1 or 1
+	local decayFunction = self:GetDecayFunction()
 	if shape == forceFieldShape.ball then
 		for i = 0, physCount - 1 do
 			local physObj = entity:GetPhysicsObjectNum(i)
@@ -213,8 +240,12 @@ function ENT:ApplyForce(entity)
 				endpos = endPos,
 			})
 			local direction = flip * (endPos - origin)
+			local distanceFactor = decayFunction((endPos - origin):Length())
 			direction:Normalize()
-			physObj:ApplyForceOffset(physObj:GetMass() * direction * self.Magnitude, tr.HitPos or endPos)
+			physObj:ApplyForceOffset(
+				distanceFactor * physObj:GetMass() * direction * self.Magnitude,
+				tr.HitPos or endPos
+			)
 		end
 	elseif shape == forceFieldShape.box then
 		for i = 0, physCount - 1 do

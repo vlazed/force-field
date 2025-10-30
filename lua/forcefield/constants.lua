@@ -8,4 +8,11 @@ constants.forceFieldShape = {
 	ball = 1,
 }
 
+---@enum ForceFieldDecay
+constants.forceFieldDecay = {
+	constant = 0,
+	inverse = 1,
+	inverse_square = 2,
+}
+
 return constants

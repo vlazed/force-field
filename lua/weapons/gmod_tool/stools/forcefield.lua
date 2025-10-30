@@ -14,10 +14,11 @@ TOOL.ClientConVar["flip"] = 0
 TOOL.ClientConVar["length"] = 10
 TOOL.ClientConVar["width"] = 10
 TOOL.ClientConVar["height"] = 10
+TOOL.ClientConVar["decay"] = 0
 
 ---@module "forcefield.constants"
 local constants = include("forcefield/constants.lua")
-local forceFieldShape = constants.forceFieldShape
+local forceFieldShape, forceFieldDecay = constants.forceFieldShape, constants.forceFieldDecay
 
 ---@class ForceFieldParams
 ---@field key integer
@@ -27,6 +28,7 @@ local forceFieldShape = constants.forceFieldShape
 ---@field size Vector
 ---@field force Vector
 ---@field flip boolean
+---@field decay ForceFieldDecay
 
 local firstReload = true
 function TOOL:Think()
@@ -76,6 +78,7 @@ function TOOL:LeftClick(tr)
 			self:GetClientNumber("height", 0)
 		),
 		force = stringToVector(self:GetClientInfo("direction")) * self:GetClientNumber("magnitude"),
+		decay = self:GetClientNumber("decay", 0),
 	}
 
 	local forcefield = IsValid(tr.Entity) and tr.Entity:GetClass() == "ent_forcefield" and tr.Entity
@@ -94,6 +97,7 @@ function TOOL:LeftClick(tr)
 	forcefield:SetToggle(params.toggle)
 	forcefield:SetActive(params.startOn)
 	forcefield:SetFlip(params.flip)
+	forcefield:SetDecay(params.decay)
 
 	numpad.OnDown(ply, params.key, "forcefield_press", forcefield)
 	numpad.OnUp(ply, params.key, "forcefield_release", forcefield)
@@ -149,6 +153,12 @@ function TOOL.BuildCPanel(cPanel)
 	local shapeCombo = parametersCategory:ComboBox("#tool.forcefield.shape", "forcefield_shape")
 	shapeCombo:AddChoice("#tool.forcefield.shape.ball", forceFieldShape.ball)
 	shapeCombo:AddChoice("#tool.forcefield.shape.box", forceFieldShape.box)
+
+	---@class DecayCombo: DComboBox
+	local decayCombo = parametersCategory:ComboBox("#tool.forcefield.decay", "forcefield_decay")
+	decayCombo:AddChoice("#tool.forcefield.decay.constant", forceFieldDecay.constant)
+	decayCombo:AddChoice("#tool.forcefield.decay.inverse", forceFieldDecay.inverse)
+	decayCombo:AddChoice("#tool.forcefield.decay.inverse_square", forceFieldDecay.inverse_square)
 
 	parametersCategory
 		:NumSlider("#tool.forcefield.magnitude", "forcefield_magnitude", 0, 100, 3)
