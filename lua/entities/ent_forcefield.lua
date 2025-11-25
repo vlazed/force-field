@@ -56,6 +56,18 @@ function ENT:SetupDataTables()
 		---@cast entity ent_forcefield
 		---@cast new Vector
 		entity.SizeLength = new:Length()
+		if CLIENT then
+			entity.Origins = nil
+		end
+	end)
+
+	self:NetworkVarNotify("Shape", function(entity, name, old, new)
+		---@cast entity ent_forcefield
+		if old ~= new then
+			if CLIENT then
+				entity.Origins = nil
+			end
+		end
 	end)
 end
 
@@ -71,7 +83,7 @@ function ENT:Initialize()
 	local maxs = Vector(1, 1, 1) * Radius * 0.5
 
 	self.Magnitude = 0
-	self.SizeLength = 0
+	self.SizeLength = self:GetSize():Length()
 
 	if SERVER then
 		self:SetModel("models/props_junk/watermelon01.mdl")
@@ -135,56 +147,109 @@ end
 
 local COLOR_RED = Color(255, 0, 0)
 
-function ENT:DrawShape()
-	local shape = self:GetShape()
-	if shape == forceFieldShape.box then
-		local mins, maxs = -self:GetSize() * 0.5, self:GetSize() * 0.5
-		render.DrawWireframeBox(
-			self:GetPos(),
-			self:GetAngles(),
-			mins,
-			maxs,
-			self:GetActive() and color_white or COLOR_RED
-		)
-	elseif shape == forceFieldShape.ball then
-		render.DrawWireframeSphere(
-			self:GetPos(),
-			self:GetSize():Length() * 0.5,
-			10,
-			10,
-			self:GetActive() and color_white or COLOR_RED
-		)
-	end
+function ENT:GetActiveColor()
+	return self:GetActive() and color_white or COLOR_RED
 end
 
-function ENT:Draw()
-	---@diagnostic disable-next-line: deprecated
-	if GetConVarNumber("cl_draweffectrings") == 0 then
-		return
+if CLIENT then
+	local material = CreateMaterial("forcefield_arrows", "UnlitGeneric", {
+		["$basetexture"] = "color/white",
+		["$model"] = 1,
+		["$translucent"] = 1,
+		["$vertexalpha"] = 1,
+		["$vertexcolor"] = 1,
+		["$ignorez"] = 1,
+		["$nocull"] = 1,
+	})
+
+	function ENT:DrawShape()
+		local shape = self:GetShape()
+		if shape == forceFieldShape.box then
+			local mins, maxs = -self:GetSize() * 0.5, self:GetSize() * 0.5
+			render.DrawWireframeBox(self:GetPos(), self:GetAngles(), mins, maxs, self:GetActiveColor())
+		elseif shape == forceFieldShape.ball then
+			render.DrawWireframeSphere(self:GetPos(), self:GetSize():Length() * 0.5, 10, 10, self:GetActiveColor())
+		end
 	end
 
-	-- Don't draw the grip if there's no chance of us picking it up
-	local ply = LocalPlayer()
-	local wep = ply:GetActiveWeapon()
-	if not IsValid(wep) then
-		return
+	function ENT:GetArrowOrigins()
+		local bias = 0.5
+		local size = self:GetSize() * bias
+		if not self.Origins then
+			local origins = {}
+			if self:GetShape() == forceFieldShape.box then
+				for i = -1, 1, 1 do
+					for j = -1, 1, 1 do
+						for k = -1, 1, 1 do
+							table.insert(origins, Vector(i * size.x, j * size.y, k * size.z))
+						end
+					end
+				end
+			elseif self:GetShape() == forceFieldShape.ball then
+				for i = 0, 26 do
+					table.insert(origins, vector_origin)
+				end
+			end
+
+			self.Origins = origins
+		end
+
+		return self.Origins
 	end
 
-	local weapon_name = wep:GetClass()
+	---TODO: Make some forcefield arrow renderer function which calls some draw arrow function and handles the shape logic there
+	function ENT:DrawArrows()
+		local origins = self:GetArrowOrigins()
+		local color = self:GetActiveColor()
+		local forward = self:GetForce():GetNormalized() * self.SizeLength * 0.125
+		local right = self:GetForce():Angle():Right() * forward:Length() * 0.125
 
-	if weapon_name ~= "weapon_physgun" and weapon_name ~= "gmod_tool" then
-		return
+		render.SetMaterial(material)
+		for _, origin in ipairs(origins) do
+			origin = self:LocalToWorld(origin)
+			if self:GetShape() == forceFieldShape.box then
+				render.StartBeam(6)
+				render.AddBeam(origin, 1, 0, color)
+				render.AddBeam(origin + forward, 1, 0, color)
+				render.AddBeam(origin + forward * 0.75 - right, 1, 0, color)
+				render.AddBeam(origin + forward, 1, 0, color)
+				render.AddBeam(origin + forward * 0.75 + right, 1, 0, color)
+				render.AddBeam(origin + forward, 1, 0, color)
+				render.EndBeam()
+			end
+		end
 	end
 
-	if self:BeingLookedAtByLocalPlayer() then
-		render.SetMaterial(self.GripMaterialHover)
-	else
-		render.SetMaterial(self.GripMaterial)
+	function ENT:Draw()
+		---@diagnostic disable-next-line: deprecated
+		if GetConVarNumber("cl_draweffectrings") == 0 then
+			return
+		end
+
+		-- Don't draw the grip if there's no chance of us picking it up
+		local ply = LocalPlayer()
+		local wep = ply:GetActiveWeapon()
+		if not IsValid(wep) then
+			return
+		end
+
+		local weapon_name = wep:GetClass()
+
+		if weapon_name ~= "weapon_physgun" and weapon_name ~= "gmod_tool" then
+			return
+		end
+
+		if self:BeingLookedAtByLocalPlayer() then
+			render.SetMaterial(self.GripMaterialHover)
+		else
+			render.SetMaterial(self.GripMaterial)
+		end
+
+		render.DrawSprite(self:GetPos(), 16, 16, color_white)
+
+		self:DrawShape()
+		self:DrawArrows()
 	end
-
-	render.DrawSprite(self:GetPos(), 16, 16, color_white)
-
-	self:DrawShape()
 end
 
 ---@return Entity[]
@@ -223,17 +288,32 @@ function ENT:GetDecayFunction()
 	end
 end
 
+---@param physObj PhysObj
+---@param origin Vector
+---@param mins Vector
+---@param maxs Vector
+---@return boolean
+local function physObjInBounds(physObj, origin, mins, maxs)
+	return util.IsBoxIntersectingSphere(origin + mins, origin + maxs, physObj:GetPos(), physObj:GetAABB():Length())
+end
+
 ---@param entity Entity
 function ENT:ApplyForce(entity)
 	local shape = self:GetShape()
 
 	local origin = self:GetPos()
+	local mins, maxs = -self:GetSize() * 0.5, self:GetSize() * 0.5
+
 	local physCount = entity:GetPhysicsObjectCount()
 	local flip = self:GetFlip() and -1 or 1
 	local decayFunction = self:GetDecayFunction()
 	if shape == forceFieldShape.ball then
 		for i = 0, physCount - 1 do
 			local physObj = entity:GetPhysicsObjectNum(i)
+			if not physObjInBounds(physObj, origin, mins, maxs) then
+				continue
+			end
+
 			local endPos = physObj:GetPos()
 			local tr = util.TraceLine({
 				start = origin,
@@ -250,12 +330,13 @@ function ENT:ApplyForce(entity)
 	elseif shape == forceFieldShape.box then
 		for i = 0, physCount - 1 do
 			local physObj = entity:GetPhysicsObjectNum(i)
+			if not physObjInBounds(physObj, origin, mins, maxs) then
+				continue
+			end
+
 			local endPos = physObj:GetPos()
-			local tr = util.TraceLine({
-				start = origin,
-				endpos = endPos,
-			})
-			physObj:ApplyForceOffset(physObj:GetMass() * flip * self:GetForce(), tr.HitPos or endPos)
+			local distanceFactor = decayFunction((endPos - origin):Length())
+			physObj:ApplyForceOffset(distanceFactor * physObj:GetMass() * flip * self:GetForce(), endPos)
 		end
 	end
 end
