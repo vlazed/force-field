@@ -85,6 +85,7 @@ function ENT:Initialize()
 	self.Magnitude = 0
 	self.SizeLength = self:GetSize():Length()
 
+	self:SetCollisionGroup(COLLISION_GROUP_WORLD)
 	if SERVER then
 		self:SetModel("models/props_junk/watermelon01.mdl")
 
@@ -106,7 +107,6 @@ function ENT:Initialize()
 		self.GripMaterialHover = Material("sprites/grip_hover")
 
 		self:DrawShadow(false)
-		self:SetCollisionGroup(COLLISION_GROUP_WORLD)
 	end
 
 	-- Set collision bounds exactly
