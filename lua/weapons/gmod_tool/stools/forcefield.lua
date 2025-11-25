@@ -88,6 +88,11 @@ function TOOL:LeftClick(tr)
 		---@cast forcefield ent_forcefield
 		forcefield:SetPos(tr.HitPos + vector_up * 10)
 		forcefield:Spawn()
+
+		undo.Create("Forcefield")
+		undo.AddEntity(forcefield)
+		undo.SetPlayer(self:GetOwner())
+		undo.Finish("Forcefield")
 	end
 
 	forcefield:SetSize(params.size)
@@ -101,11 +106,6 @@ function TOOL:LeftClick(tr)
 
 	numpad.OnDown(ply, params.key, "forcefield_press", forcefield)
 	numpad.OnUp(ply, params.key, "forcefield_release", forcefield)
-
-	undo.Create("Forcefield")
-	undo.AddEntity(forcefield)
-	undo.SetPlayer(self:GetOwner())
-	undo.Finish("Forcefield")
 
 	return true
 end
